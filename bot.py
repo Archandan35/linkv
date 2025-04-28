@@ -1,92 +1,107 @@
 import os
-from pyrogram import Client, filters
-import asyncio
-from pyrogram.errors import FloodWait
+import logging
+from telegram import Update
+from telegram.ext import (
+    Application,
+    MessageHandler,
+    CommandHandler,
+    filters,
+    ContextTypes,
+)
+import requests
+from urllib.parse import urlencode
 
-# Get API details and bot token from environment variables
-api_id = int(os.environ.get("API_ID"))
-api_hash = os.environ.get("API_HASH")
-bot_token = os.environ.get("BOT_TOKEN")
+# Enable logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Initialize the bot
-app = Client("bulk_video_link_bot", api_id=api_id, api_hash=api_hash, bot_token=bot_token)
+# Store video links in memory (for simplicity; consider a database for production)
+VIDEO_LINKS = []
 
-# Handler for /start command
-@app.on_message(filters.command("start"))
-async def start_command(client, message):
-    await message.reply("👋 Welcome to the Bulk Video Link Generator bot! Send one or more videos, and I'll generate download links for them.")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /start command."""
+    await update.message.reply_text(
+        "Bot is running! Send videos in the source chat, and I'll forward them and generate links."
+    )
 
-# Handler for receiving single videos
-@app.on_message(filters.video & ~filters.media_group)
-async def forward_and_generate_link(client, message):
+async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming video messages."""
+    source_chat_id = os.getenv("SOURCE_CHAT_ID")
+    dest_chat_id = os.getenv("DEST_CHAT_ID")
+    bot_token = os.getenv("BOT_TOKEN")
+
+    # Check if the message is from the source chat
+    if str(update.message.chat_id) != source_chat_id:
+        return
+
+    # Check if the message contains a video
+    if not update.message.video:
+        return
+
     try:
-        # Get the file ID from the video
-        file_id = message.video.file_id
+        # Forward the video to the destination chat
+        forwarded_message = await context.bot.forward_message(
+            chat_id=dest_chat_id,
+            from_chat_id=update.message.chat_id,
+            message_id=update.message.message_id
+        )
 
-        # Use get_file to fetch the file_path
-        try:
-            file = await client.get_file(file_id)
-        except FloodWait as e:
-            print(f"FloodWait: Waiting for {e.x} seconds")
-            await asyncio.sleep(e.x)
-            file = await client.get_file(file_id)
+        # Get the file ID of the video
+        file_id = update.message.video.file_id
+        # Get file details
+        file = await context.bot.get_file(file_id)
         file_path = file.file_path
 
-        # Generate the download link using the file_path
+        # Construct the direct download link
         download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
 
-        # Send the download link
-        await message.reply(f"✅ Video Download Link:\n{download_link}")
+        # Store the link
+        VIDEO_LINKS.append(download_link)
+
+        # Notify user in source chat
+        await update.message.reply_text(
+            f"Video forwarded and link generated: {download_link}"
+        )
+
     except Exception as e:
-        # Log the error and notify the user
-        print(f"Error processing video: {e}")
-        await message.reply("⚠️ Oops! Something went wrong while processing the video. Please try again later.")
+        logger.error(f"Error processing video: {e}")
+        await update.message.reply_text("Failed to process video.")
 
-# Handler for media groups (to support multiple videos sent together)
-@app.on_message(filters.media_group)
-async def handle_media_group(client, message):
-    try:
-        # Get all messages in the media group
-        media_group_id = message.media_group_id
-        messages = await client.get_media_group(message.chat.id, media_group_id)
+async def get_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /links command to retrieve all generated links."""
+    if not VIDEO_LINKS:
+        await update.message.reply_text("No video links generated yet.")
+        return
 
-        for msg in messages:
-            if msg.video:
-                # Get the file ID from the video
-                file_id = msg.video.file_id
+    # Send all links as a single message
+    links_text = "\n".join(VIDEO_LINKS)
+    await update.message.reply_text(f"Generated video links:\n{links_text}")
 
-                # Use get_file to fetch the file_path
-                try:
-                    file = await client.get_file(file_id)
-                except FloodWait as e:
-                    print(f"FloodWait: Waiting for {e.x} seconds")
-                    await asyncio.sleep(e.x)
-                    file = await client.get_file(file_id)
-                file_path = file.file_path
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log errors caused by updates."""
+    logger.error(f"Update {update} caused error {context.error}")
 
-                # Generate the download link using the file_path
-                download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+def main():
+    """Run the bot."""
+    # Get the bot token from environment variables
+    bot_token = os.getenv("BOT_TOKEN")
+    if not bot_token:
+        logger.error("BOT_TOKEN environment variable not set.")
+        return
 
-                # Send the download link
-                await msg.reply(f"✅ Video Download Link:\n{download_link}")
-                await asyncio.sleep(1)  # Avoid rate limits
-    except Exception as e:
-        print(f"Error processing media group: {e}")
-        await message.reply("⚠️ Oops! Something went wrong while processing the videos. Please try again later.")
+    # Create the Application
+    application = Application.builder().token(bot_token).build()
 
-# Run the bot with flood wait handling
-async def main():
-    while True:
-        try:
-            await app.start()
-            await app.idle()
-        except FloodWait as e:
-            print(f"FloodWait: Waiting for {e.x} seconds before restarting")
-            await asyncio.sleep(e.x)
-        except Exception as e:
-            print(f"Error: {e}")
-            await asyncio.sleep(5)  # Wait before retrying
+    # Register handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("links", get_links))
+    application.add_handler(MessageHandler(filters.VIDEO, handle_video))
+    application.add_error_handler(error_handler)
+
+    # Start the bot
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    asyncio.run(main())
-```
+    main()
