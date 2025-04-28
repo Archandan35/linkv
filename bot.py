@@ -1,6 +1,9 @@
+The error `ImportError: cannot import name 'GetFile' from 'pyrogram.raw.functions'` indicates that the `GetFile` function is not available in `pyrogram.raw.functions` for your version of Pyrogram (2.0.106). Instead, we can use Pyrogram’s `client.get_file` method to fetch the file path. Below is the updated `bot.py` that removes the `RawGetFile` import and uses the correct method to generate download links, while retaining flood wait handling.
+
+**Updated `bot.py`**:
+```python
 import os
 from pyrogram import Client, filters
-from pyrogram.raw.functions import GetFile as RawGetFile
 import asyncio
 from pyrogram.errors import FloodWait
 
@@ -26,11 +29,11 @@ async def forward_and_generate_link(client, message):
 
         # Use get_file to fetch the file_path
         try:
-            file = await client.invoke(RawGetFile(file_id=file_id))
+            file = await client.get_file(file_id)
         except FloodWait as e:
             print(f"FloodWait: Waiting for {e.x} seconds")
             await asyncio.sleep(e.x)
-            file = await client.invoke(RawGetFile(file_id=file_id))
+            file = await client.get_file(file_id)
         file_path = file.file_path
 
         # Generate the download link using the file_path
@@ -58,11 +61,11 @@ async def handle_media_group(client, message):
 
                 # Use get_file to fetch the file_path
                 try:
-                    file = await client.invoke(RawGetFile(file_id=file_id))
+                    file = await client.get_file(file_id)
                 except FloodWait as e:
                     print(f"FloodWait: Waiting for {e.x} seconds")
                     await asyncio.sleep(e.x)
-                    file = await client.invoke(RawGetFile(file_id=file_id))
+                    file = await client.get_file(file_id)
                 file_path = file.file_path
 
                 # Generate the download link using the file_path
@@ -90,3 +93,96 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+```  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/auth/sign_in_bot.py", line 51, in sign_in_bot
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/advanced/invoke.py", line 79, in invoke
+
+    return await self.send(query, timeout=timeout)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+    RPCError.raise_it(result, type(data))
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/errors/rpc_error.py", line 91, in raise_it
+
+pyrogram.errors.exceptions.flood_420.FloodWait: Telegram says: [420 FLOOD_WAIT_X] - A wait of 1927 seconds is required (caused by "auth.ImportBotAuthorization")
+
+Traceback (most recent call last):
+
+  File "/app/bot.py", line 43, in <module>
+
+    app.run()
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/utilities/run.py", line 84, in run
+
+    self.start()
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/sync.py", line 66, in async_to_sync_wrap
+
+    return loop.run_until_complete(coroutine)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+^^^^^^^^^
+
+  File "/root/.nix-profile/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+
+    return future.result()
+
+           ^^^^^^^^^^^^^^^
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/utilities/start.py", line 62, in start
+
+    await self.authorize()
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/client.py", line 333, in authorize
+
+    return await self.sign_in_bot(self.bot_token)
+
+           ^^^^^^^^^^^^^^^^^^^^^^
+
+^^^^^^^^^^^^^^^^
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/auth/sign_in_bot.py", line 51, in sign_in_bot
+
+    r = await self.invoke(
+
+        ^^^^^^^^^^^^^^^^^^
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/advanced/invoke.py", line 79, in invoke
+
+    r = await self.session.invoke(
+
+        ^^^^^^^^^^^^^^^^^^^^
+
+^^^^^^
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/session/session.py", line 389, in invoke
+
+    return await self.send(query, timeout=timeout)
+
+           ^^^^^^^^^^^^^^^^^^^^^
+
+^^^^^^^^^^^^^^^^^^
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/session/session.py", line 357, in send
+
+    RPCError.raise_it(result, type(data))
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/errors/rpc_error.py", line 91, in raise_it
+
+    raise getattr(
+
+pyrogram.errors.exceptions.flood_420.FloodWait: Telegram says: [420 FLOOD_WAIT_X] - A wait of 1920 seconds is required (caused by "auth.ImportBotAuthorization")
+
+  File "/app/bot.py", line 43, in <module>
+
+    app.run()
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/utilities/run.py", line 84, in run
+
+  File "/root/.nix-profile/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+
+    await self.authorize()
+
+  File "/opt/venv/lib/python3.12/site-packages/pyrogram/methods/auth/sign_in_bot.py", line 51, in sign_in_bot
