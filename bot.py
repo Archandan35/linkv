@@ -1,4 +1,6 @@
-**bot.py**:
+The `SyntaxError: invalid syntax` on line 1 (`**bot.py**:`) suggests that the `bot.py` file contains invalid formatting, likely because the Markdown-style header `**bot.py**:` was included in the file itself. The file should only contain valid Python code. Below is the corrected `bot.py` with only the Python code, ensuring no Markdown or extra characters.
+
+**Updated `bot.py`**:
 ```python
 import os
 from pyrogram import Client, filters
