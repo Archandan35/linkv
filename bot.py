@@ -14,7 +14,8 @@ from pathlib import Path
 from fastapi import FastAPI, File, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
-import threading
+from uvicorn.config import Config
+from uvicorn.server import Server
 
 # Enable detailed logging
 logging.basicConfig(
@@ -149,13 +150,17 @@ async def run_bot():
     logger.debug("Starting polling")
     await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-def run_server():
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+async def main():
+    # Start FastAPI server
+    config = Config(app=app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    server = Server(config)
+    fastapi_task = asyncio.create_task(server.serve())
+
+    # Start Telegram bot
+    bot_task = asyncio.create_task(run_bot())
+
+    # Wait for both tasks
+    await asyncio.gather(fastapi_task, bot_task)
 
 if __name__ == "__main__":
-    # Run FastAPI server in a separate thread
-    server_thread = threading.Thread(target=run_server)
-    server_thread.start()
-
-    # Run Telegram bot in the main thread
-    asyncio.run(run_bot())
+    asyncio.run(main())
