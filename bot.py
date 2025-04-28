@@ -22,7 +22,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Store video links in memory
 VIDEO_LINKS = []
+
+# Directory for temporary file storage
 TEMP_DIR = Path("temp_files")
 TEMP_DIR.mkdir(exist_ok=True)
 
@@ -88,7 +91,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug(f"Downloading file to {temp_file_path}")
         await file.download_to_drive(temp_file_path)
 
-        # Generate public URL (Railway assigns a public domain)
         download_link = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/files/{file_id}.mp4"
         VIDEO_LINKS.append(download_link)
         logger.debug(f"Generated link: {download_link}")
@@ -127,7 +129,7 @@ async def test_dest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error {context.error}")
 
-def run_bot():
+async def run_bot():
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         logger.error("BOT_TOKEN environment variable not set.")
@@ -145,14 +147,23 @@ def run_bot():
     application.add_error_handler(error_handler)
 
     logger.debug("Starting polling")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 def run_server():
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
 
 if __name__ == "__main__":
-    # Run bot in a separate thread
-    bot_thread = threading.Thread(target=run_bot)
+    # Create a new event loop for the bot
+    bot_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(bot_loop)
+
+    # Run bot in a separate thread with its own event loop
+    def bot_thread_func():
+        asyncio.set_event_loop(bot_loop)
+        bot_loop.run_until_complete(run_bot())
+
+    bot_thread = threading.Thread(target=bot_thread_func)
     bot_thread.start()
-    # Run FastAPI server
+
+    # Run FastAPI server in the main thread
     run_server()
