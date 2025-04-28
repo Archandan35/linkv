@@ -153,17 +153,9 @@ def run_server():
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
 
 if __name__ == "__main__":
-    # Create a new event loop for the bot
-    bot_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(bot_loop)
+    # Run FastAPI server in a separate thread
+    server_thread = threading.Thread(target=run_server)
+    server_thread.start()
 
-    # Run bot in a separate thread with its own event loop
-    def bot_thread_func():
-        asyncio.set_event_loop(bot_loop)
-        bot_loop.run_until_complete(run_bot())
-
-    bot_thread = threading.Thread(target=bot_thread_func)
-    bot_thread.start()
-
-    # Run FastAPI server in the main thread
-    run_server()
+    # Run Telegram bot in the main thread
+    asyncio.run(run_bot())
