@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import aiofiles
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -9,6 +10,8 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
+from pathlib import Path
+from urllib.parse import urlencode
 
 # Enable detailed logging
 logging.basicConfig(
@@ -19,19 +22,22 @@ logger = logging.getLogger(__name__)
 # Store video links in memory
 VIDEO_LINKS = []
 
+# Directory for temporary file storage
+TEMP_DIR = Path("temp_files")
+TEMP_DIR.mkdir(exist_ok=True)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /start command."""
     logger.debug(f"Received /start from chat {update.message.chat_id}")
     await update.message.reply_text(
-        "Bot is running! Send videos in the source chat, and I'll forward them and generate links."
+        "Bot is running! Send videos in the source chat, and I'll forward them. Links generated for videos ≤20MB."
     )
-
 
 async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log all incoming messages for debugging."""
     logger.debug(f"Received message in chat {update.message.chat_id}: {update.message}")
     if update.message.video:
-        logger.debug(f"Video detected: file_id={update.message.video.file_id}, mime_type={update.message.video.mime_type}")
+        logger.debug(f"Video detected: file_id={update.message.video.file_id}, mime_type={update.message.video.mime_type}, size={update.message.video.file_size}")
     else:
         logger.debug("No video in message")
 
@@ -43,21 +49,21 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.debug(f"Checking video in chat {update.message.chat_id}, expected source: {source_chat_id}")
 
-    # Verify chat ID
     if str(update.message.chat_id) != source_chat_id:
         logger.debug(f"Ignored message from chat {update.message.chat_id}, not source chat")
         return
 
-    # Verify video
     if not update.message.video:
         logger.debug("Message is not a video")
         return
 
     try:
-        logger.debug(f"Processing video: file_id={update.message.video.file_id}")
-        # Add delay to avoid rate limits
-        await asyncio.sleep(1)
-        # Forward video
+        video = update.message.video
+        file_size_mb = video.file_size / (1024 * 1024)  # Convert bytes to MB
+        logger.debug(f"Processing video: file_id={video.file_id}, size={file_size_mb:.2f}MB")
+
+        # Forward video (no size limit for forwarding)
+        await asyncio.sleep(1)  # Avoid rate limits
         logger.debug(f"Forwarding to destination chat {dest_chat_id}")
         forwarded_message = await context.bot.forward_message(
             chat_id=dest_chat_id,
@@ -66,16 +72,30 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.debug(f"Video forwarded, message_id={forwarded_message.message_id}")
 
-        # Generate download link
-        file_id = update.message.video.file_id
+        # Generate link only for videos ≤20MB
+        if file_size_mb > 20:
+            logger.debug("Video too large for link generation (>20MB)")
+            await update.message.reply_text(
+                "Video forwarded, but link not generated: File is too big (>20MB). Use videos ≤20MB for links."
+            )
+            return
+
+        # Get file and download it
+        file_id = video.file_id
         logger.debug(f"Getting file for file_id={file_id}")
         file = await context.bot.get_file(file_id)
         file_path = file.file_path
-        download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+        # Download file to temporary directory
+        temp_file_path = TEMP_DIR / f"{file_id}.mp4"
+        logger.debug(f"Downloading file to {temp_file_path}")
+        await file.download_to_drive(temp_file_path)
+
+        # Generate a local link (for testing; in production, use a public URL)
+        download_link = f"file://{temp_file_path}"  # Placeholder; see notes below
         VIDEO_LINKS.append(download_link)
         logger.debug(f"Generated link: {download_link}")
 
-        # Reply to user
         await update.message.reply_text(f"Video forwarded and link generated: {download_link}")
 
     except Exception as e:
@@ -124,13 +144,12 @@ def main():
     logger.debug("Starting bot application")
     application = Application.builder().token(bot_token).build()
 
-    # Register handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("links", get_links))
     application.add_handler(CommandHandler("env", env_check))
     application.add_handler(CommandHandler("testdest", test_dest))
     application.add_handler(MessageHandler(filters.VIDEO, handle_video))
-    application.add_handler(MessageHandler(filters.ALL, debug_message))  # Debug all messages
+    application.add_handler(MessageHandler(filters.ALL, debug_message))
     application.add_error_handler(error_handler)
 
     logger.debug("Starting polling")
