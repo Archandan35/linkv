@@ -1,4 +1,4 @@
-The `SyntaxError: invalid syntax` on line 1 (`**bot.py**:`) suggests that the `bot.py` file contains invalid formatting, likely because the Markdown-style header `**bot.py**:` was included in the file itself. The file should only contain valid Python code. Below is the corrected `bot.py` with only the Python code, ensuring no Markdown or extra characters.
+The `SyntaxError: invalid syntax` on line 1 indicates that your `bot.py` file contains non-Python content, likely an explanation or Markdown text that was accidentally included. The file must contain only valid Python code. Below is the corrected `bot.py` with only the necessary Python code for your Telegram bot to generate video download links.
 
 **Updated `bot.py`**:
 ```python
