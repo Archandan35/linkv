@@ -12,6 +12,7 @@ app = Client("bulk_video_link_bot", api_id=api_id, api_hash=api_hash, bot_token=
 # Handler for /start command
 @app.on_message(filters.command("start"))
 async def start_command(client, message):
+    print("Start command triggered")  # Debugging log
     # Send a welcome message when /start is typed
     await message.reply("👋 Welcome to the Bulk Video Link Generator bot! Send a video and I'll generate a download link for you.")
 
