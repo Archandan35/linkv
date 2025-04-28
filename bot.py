@@ -26,12 +26,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Bot is running! Send videos in the source chat, and I'll forward them and generate links."
     )
 
-@app.on_message()
-async def send_chat_id(client, message):
-    # Extract the chat ID of the user who sends the message
-    chat_id = message.chat.id
-    await message.reply(f"Your chat ID is: {chat_id}")
-
 
 async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log all incoming messages for debugging."""
