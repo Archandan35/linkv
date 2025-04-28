@@ -11,7 +11,10 @@ from telegram.ext import (
     ContextTypes,
 )
 from pathlib import Path
-from urllib.parse import urlencode
+from fastapi import FastAPI, File, Response
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+import threading
 
 # Enable detailed logging
 logging.basicConfig(
@@ -19,22 +22,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Store video links in memory
 VIDEO_LINKS = []
-
-# Directory for temporary file storage
 TEMP_DIR = Path("temp_files")
 TEMP_DIR.mkdir(exist_ok=True)
 
+# FastAPI app
+app = FastAPI()
+app.mount("/files", StaticFiles(directory=TEMP_DIR), name="files")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /start command."""
     logger.debug(f"Received /start from chat {update.message.chat_id}")
     await update.message.reply_text(
         "Bot is running! Send videos in the source chat, and I'll forward them. Links generated for videos ≤20MB."
     )
 
 async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Log all incoming messages for debugging."""
     logger.debug(f"Received message in chat {update.message.chat_id}: {update.message}")
     if update.message.video:
         logger.debug(f"Video detected: file_id={update.message.video.file_id}, mime_type={update.message.video.mime_type}, size={update.message.video.file_size}")
@@ -42,7 +44,6 @@ async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.debug("No video in message")
 
 async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle incoming video messages."""
     source_chat_id = os.getenv("SOURCE_CHAT_ID")
     dest_chat_id = os.getenv("DEST_CHAT_ID")
     bot_token = os.getenv("BOT_TOKEN")
@@ -59,11 +60,10 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         video = update.message.video
-        file_size_mb = video.file_size / (1024 * 1024)  # Convert bytes to MB
+        file_size_mb = video.file_size / (1024 * 1024)
         logger.debug(f"Processing video: file_id={video.file_id}, size={file_size_mb:.2f}MB")
 
-        # Forward video (no size limit for forwarding)
-        await asyncio.sleep(1)  # Avoid rate limits
+        await asyncio.sleep(1)
         logger.debug(f"Forwarding to destination chat {dest_chat_id}")
         forwarded_message = await context.bot.forward_message(
             chat_id=dest_chat_id,
@@ -72,7 +72,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.debug(f"Video forwarded, message_id={forwarded_message.message_id}")
 
-        # Generate link only for videos ≤20MB
         if file_size_mb > 20:
             logger.debug("Video too large for link generation (>20MB)")
             await update.message.reply_text(
@@ -80,19 +79,17 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Get file and download it
         file_id = video.file_id
         logger.debug(f"Getting file for file_id={file_id}")
         file = await context.bot.get_file(file_id)
         file_path = file.file_path
 
-        # Download file to temporary directory
         temp_file_path = TEMP_DIR / f"{file_id}.mp4"
         logger.debug(f"Downloading file to {temp_file_path}")
         await file.download_to_drive(temp_file_path)
 
-        # Generate a local link (for testing; in production, use a public URL)
-        download_link = f"file://{temp_file_path}"  # Placeholder; see notes below
+        # Generate public URL (Railway assigns a public domain)
+        download_link = f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}/files/{file_id}.mp4"
         VIDEO_LINKS.append(download_link)
         logger.debug(f"Generated link: {download_link}")
 
@@ -103,7 +100,6 @@ async def handle_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Failed to process video: {str(e)}")
 
 async def get_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Retrieve all generated links."""
     logger.debug(f"Received /links from chat {update.message.chat_id}")
     if not VIDEO_LINKS:
         await update.message.reply_text("No video links generated yet.")
@@ -112,7 +108,6 @@ async def get_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Generated video links:\n{links_text}")
 
 async def env_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check environment variables."""
     logger.debug(f"Received /env from chat {update.message.chat_id}")
     await update.message.reply_text(
         f"SOURCE_CHAT_ID: {os.getenv('SOURCE_CHAT_ID')}\n"
@@ -120,7 +115,6 @@ async def env_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def test_dest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Test sending a message to the destination chat."""
     dest_chat_id = os.getenv("DEST_CHAT_ID")
     logger.debug(f"Received /testdest, testing destination chat {dest_chat_id}")
     try:
@@ -131,11 +125,9 @@ async def test_dest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Failed to send to destination: {str(e)}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Log errors."""
     logger.error(f"Update {update} caused error {context.error}")
 
-def main():
-    """Run the bot."""
+def run_bot():
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         logger.error("BOT_TOKEN environment variable not set.")
@@ -155,5 +147,12 @@ def main():
     logger.debug("Starting polling")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
+def run_server():
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+
 if __name__ == "__main__":
-    main()
+    # Run bot in a separate thread
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+    # Run FastAPI server
+    run_server()
