@@ -1,5 +1,8 @@
+```python
 import os
 from pyrogram import Client, filters
+from pyrogram.raw.functions import GetFile as RawGetFile
+import asyncio
 
 # Get API details and bot token from environment variables
 api_id = int(os.environ.get("API_ID"))
@@ -14,16 +17,21 @@ app = Client("bulk_video_link_bot", api_id=api_id, api_hash=api_hash, bot_token=
 async def start_command(client, message):
     await message.reply("👋 Welcome to the Bulk Video Link Generator bot! Send one or more videos, and I'll generate download links for them.")
 
-# Handler for receiving videos
-@app.on_message(filters.video)
+# Handler for receiving single videos
+@app.on_message(filters.video & ~filters.media_group)
 async def forward_and_generate_link(client, message):
     try:
         # Get the file ID from the video
         file_id = message.video.file_id
 
-        # Generate the download link using the file_id
-        # Note: Direct file access requires the bot token, and links are temporary
-        download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_id}"
+        # Use get_file to fetch the file_path
+        file = await client.invoke(
+            RawGetFile(file_id=file_id)
+        )
+        file_path = file.file_path
+
+        # Generate the download link using the file_path
+        download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
 
         # Send the download link
         await message.reply(f"✅ Video Download Link:\n{download_link}")
@@ -42,9 +50,21 @@ async def handle_media_group(client, message):
 
         for msg in messages:
             if msg.video:
+                # Get the file ID from the video
                 file_id = msg.video.file_id
-                download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_id}"
+
+                # Use get_file to fetch the file_path
+                file = await client.invoke(
+                    RawGetFile(file_id=file_id)
+                )
+                file_path = file.file_path
+
+                # Generate the download link using the file_path
+                download_link = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+
+                # Send the download link
                 await msg.reply(f"✅ Video Download Link:\n{download_link}")
+                await asyncio.sleep(1)  # Avoid rate limits
     except Exception as e:
         print(f"Error processing media group: {e}")
         await message.reply("⚠️ Oops! Something went wrong while processing the videos. Please try again later.")
@@ -52,3 +72,4 @@ async def handle_media_group(client, message):
 # Run the bot
 if __name__ == "__main__":
     app.run()
+```
