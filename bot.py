@@ -19,8 +19,10 @@ async def start_command(client, message):
 @app.on_message(filters.video)
 async def forward_and_generate_link(client, message):
     try:
-        # Await the file info properly (use get_file correctly)
+        # Correct way to handle get_file
         file_info = await client.get_file(message.video.file_id)
+        
+        # Fetch file path from file_info
         file_path = file_info.file_path
         
         # Generate the download link
