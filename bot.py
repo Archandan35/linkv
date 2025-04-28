@@ -32,7 +32,6 @@ async def send_chat_id(client, message):
     chat_id = message.chat.id
     await message.reply(f"Your chat ID is: {chat_id}")
 
-app.run()
 
 async def debug_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Log all incoming messages for debugging."""
