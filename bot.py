@@ -1,7 +1,3 @@
-The `SyntaxError: invalid syntax` on line 1 indicates that your `bot.py` file contains non-Python content, likely an explanation or Markdown text that was accidentally included. The file must contain only valid Python code. Below is the corrected `bot.py` with only the necessary Python code for your Telegram bot to generate video download links.
-
-**Updated `bot.py`**:
-```python
 import os
 from pyrogram import Client, filters
 import asyncio
